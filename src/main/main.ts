@@ -10,13 +10,10 @@
  */
 import path from 'path';
 import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron';
-import { spawn, exec } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import fs from 'fs';
 import https from 'https';
 import { autoUpdater } from 'electron-updater';
-
-const execAsync = promisify(exec);
 import log from 'electron-log';
 import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
@@ -32,16 +29,16 @@ class AppUpdater {
 let mainWindow: BrowserWindow | null = null;
 
 function getYtDlpUrl(): string {
-  const platform = process.platform;
+  const { platform } = process;
   const baseUrl = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/';
 
   if (platform === 'win32') {
     return `${baseUrl}yt-dlp.exe`;
-  } else if (platform === 'darwin') {
-    return `${baseUrl}yt-dlp_macos`;
-  } else {
-    return `${baseUrl}yt-dlp`;
   }
+  if (platform === 'darwin') {
+    return `${baseUrl}yt-dlp_macos`;
+  }
+  return `${baseUrl}yt-dlp`;
 }
 
 function getYtDlpPath(): string {
@@ -60,35 +57,37 @@ async function downloadFile(url: string, filePath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(filePath);
 
-    https.get(url, (response) => {
-      if (response.statusCode === 302 || response.statusCode === 301) {
-        // Handle redirects
-        return downloadFile(response.headers.location!, filePath)
-          .then(resolve)
-          .catch(reject);
-      }
-
-      if (response.statusCode !== 200) {
-        reject(new Error(`HTTP ${response.statusCode}`));
-        return;
-      }
-
-      response.pipe(file);
-
-      file.on('finish', () => {
-        file.close();
-        // Make executable on Unix systems
-        if (process.platform !== 'win32') {
-          fs.chmodSync(filePath, 0o755);
+    https
+      .get(url, (response) => {
+        if (response.statusCode === 302 || response.statusCode === 301) {
+          // Handle redirects
+          return downloadFile(response.headers.location!, filePath)
+            .then(resolve)
+            .catch(reject);
         }
-        resolve();
-      });
 
-      file.on('error', (err) => {
-        fs.unlink(filePath, () => {}); // Clean up on error
-        reject(err);
-      });
-    }).on('error', reject);
+        if (response.statusCode !== 200) {
+          reject(new Error(`HTTP ${response.statusCode}`));
+          return;
+        }
+
+        response.pipe(file);
+
+        file.on('finish', () => {
+          file.close();
+          // Make executable on Unix systems
+          if (process.platform !== 'win32') {
+            fs.chmodSync(filePath, 0o755);
+          }
+          resolve();
+        });
+
+        file.on('error', (err) => {
+          fs.unlink(filePath, () => {}); // Clean up on error
+          reject(err);
+        });
+      })
+      .on('error', reject);
   });
 }
 
@@ -122,7 +121,7 @@ ipcMain.on('ipc-example', async (event, arg) => {
 ipcMain.handle('dialog:openDirectory', async () => {
   const result = await dialog.showOpenDialog(mainWindow!, {
     properties: ['openDirectory'],
-    title: 'Selecione a pasta de download'
+    title: 'Selecione a pasta de download',
   });
   return result;
 });
@@ -135,14 +134,17 @@ ipcMain.handle('download:start', async (_, { url, outputPath, format }) => {
     const ytDlpPath = await ensureYtDlp();
 
     // Build command arguments
-    const args = [
-      url,
-      '-o', `${outputPath}/%(title)s.%(ext)s`,
-    ];
+    const args = [url, '-o', `${outputPath}/%(title)s.%(ext)s`];
 
     // Format specific options
     if (format === 'mp3') {
-      args.push('--extract-audio', '--audio-format', 'mp3', '--audio-quality', '192K');
+      args.push(
+        '--extract-audio',
+        '--audio-format',
+        'mp3',
+        '--audio-quality',
+        '192K',
+      );
     } else if (format === 'mp4') {
       args.push('--format', 'best[ext=mp4]');
     }
@@ -151,7 +153,7 @@ ipcMain.handle('download:start', async (_, { url, outputPath, format }) => {
 
     // Spawn the download process
     const downloadProcess = spawn(ytDlpPath, args, {
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     // Handle process output
@@ -167,14 +169,13 @@ ipcMain.handle('download:start', async (_, { url, outputPath, format }) => {
     return {
       success: true,
       message: `Download iniciado! Salvando em: ${outputPath}`,
-      pid: downloadProcess.pid
+      pid: downloadProcess.pid,
     };
-
   } catch (error) {
     console.error('Download error:', error);
     return {
       success: false,
-      message: `Erro ao iniciar download: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
+      message: `Erro ao iniciar download: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
     };
   }
 });
