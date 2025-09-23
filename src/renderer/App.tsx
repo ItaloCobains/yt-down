@@ -1,40 +1,56 @@
 import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
-import icon from '../../assets/icon.svg';
 import './App.css';
 
 function Hello() {
   return (
-    <div>
-      <div className="Hello">
-        <img width="200" alt="icon" src={icon} />
-      </div>
-      <h1>electron-react-boilerplate</h1>
-      <div className="Hello">
-        <a
-          href="https://electron-react-boilerplate.js.org/"
-          target="_blank"
-          rel="noreferrer"
-        >
-          <button type="button">
-            <span role="img" aria-label="books">
-              📚
-            </span>
-            Read our docs
+    <div className="container">
+      <h1>YouTube Downloader</h1>
+      <form className="download-form">
+        <div className="form-group">
+          <label htmlFor="youtube-link">
+            Link do YouTube:
+            <input
+              type="url"
+              id="youtube-link"
+              name="youtube-link"
+              placeholder="Cole o link do YouTube aqui..."
+              required
+            />
+          </label>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="download-path">
+            Pasta de Download:
+            <input
+              type="text"
+              id="download-path"
+              name="download-path"
+              placeholder="Selecione a pasta de destino..."
+              readOnly
+              required
+            />
+          </label>
+          <button type="button" className="browse-btn">
+            Procurar
           </button>
-        </a>
-        <a
-          href="https://github.com/sponsors/electron-react-boilerplate"
-          target="_blank"
-          rel="noreferrer"
-        >
-          <button type="button">
-            <span role="img" aria-label="folded hands">
-              🙏
-            </span>
-            Donate
-          </button>
-        </a>
-      </div>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="format">
+            Formato:
+            <select id="format" name="format" required>
+              <option value="">Selecione o formato</option>
+              <option value="mp3">MP3 (Áudio)</option>
+              <option value="mp4">MP4 (Vídeo)</option>
+            </select>
+          </label>
+        </div>
+
+        <button type="submit" className="download-btn">
+          Baixar
+        </button>
+      </form>
     </div>
   );
 }
