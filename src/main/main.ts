@@ -10,7 +10,13 @@
  */
 import path from 'path';
 import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron';
+import { spawn, exec } from 'child_process';
+import { promisify } from 'util';
+import fs from 'fs';
+import https from 'https';
 import { autoUpdater } from 'electron-updater';
+
+const execAsync = promisify(exec);
 import log from 'electron-log';
 import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
@@ -24,6 +30,88 @@ class AppUpdater {
 }
 
 let mainWindow: BrowserWindow | null = null;
+
+function getYtDlpUrl(): string {
+  const platform = process.platform;
+  const baseUrl = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/';
+
+  if (platform === 'win32') {
+    return `${baseUrl}yt-dlp.exe`;
+  } else if (platform === 'darwin') {
+    return `${baseUrl}yt-dlp_macos`;
+  } else {
+    return `${baseUrl}yt-dlp`;
+  }
+}
+
+function getYtDlpPath(): string {
+  const userDataPath = app.getPath('userData');
+  const binDir = path.join(userDataPath, 'bin');
+
+  if (!fs.existsSync(binDir)) {
+    fs.mkdirSync(binDir, { recursive: true });
+  }
+
+  const filename = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+  return path.join(binDir, filename);
+}
+
+async function downloadFile(url: string, filePath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(filePath);
+
+    https.get(url, (response) => {
+      if (response.statusCode === 302 || response.statusCode === 301) {
+        // Handle redirects
+        return downloadFile(response.headers.location!, filePath)
+          .then(resolve)
+          .catch(reject);
+      }
+
+      if (response.statusCode !== 200) {
+        reject(new Error(`HTTP ${response.statusCode}`));
+        return;
+      }
+
+      response.pipe(file);
+
+      file.on('finish', () => {
+        file.close();
+        // Make executable on Unix systems
+        if (process.platform !== 'win32') {
+          fs.chmodSync(filePath, 0o755);
+        }
+        resolve();
+      });
+
+      file.on('error', (err) => {
+        fs.unlink(filePath, () => {}); // Clean up on error
+        reject(err);
+      });
+    }).on('error', reject);
+  });
+}
+
+async function ensureYtDlp(): Promise<string> {
+  const ytDlpPath = getYtDlpPath();
+
+  // Check if already exists
+  if (fs.existsSync(ytDlpPath)) {
+    return ytDlpPath;
+  }
+
+  console.log('Downloading yt-dlp...');
+  const url = getYtDlpUrl();
+
+  try {
+    await downloadFile(url, ytDlpPath);
+    console.log('yt-dlp downloaded successfully');
+    return ytDlpPath;
+  } catch (error) {
+    console.error('Failed to download yt-dlp:', error);
+    throw new Error('Failed to download yt-dlp');
+  }
+}
 
 ipcMain.on('ipc-example', async (event, arg) => {
   const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`;
@@ -42,13 +130,52 @@ ipcMain.handle('dialog:openDirectory', async () => {
 ipcMain.handle('download:start', async (_, { url, outputPath, format }) => {
   try {
     console.log('Starting download:', { url, outputPath, format });
-    // Aqui você implementaria a lógica de download usando yt-dlp ou similar
-    // Por exemplo: spawn('yt-dlp', [url, '-o', `${outputPath}/%(title)s.%(ext)s`, '--format', format === 'mp3' ? 'bestaudio' : 'best'])
 
-    return { success: true, message: 'Download iniciado com sucesso!' };
+    // Ensure yt-dlp is available
+    const ytDlpPath = await ensureYtDlp();
+
+    // Build command arguments
+    const args = [
+      url,
+      '-o', `${outputPath}/%(title)s.%(ext)s`,
+    ];
+
+    // Format specific options
+    if (format === 'mp3') {
+      args.push('--extract-audio', '--audio-format', 'mp3', '--audio-quality', '192K');
+    } else if (format === 'mp4') {
+      args.push('--format', 'best[ext=mp4]');
+    }
+
+    console.log('Executing:', ytDlpPath, args.join(' '));
+
+    // Spawn the download process
+    const downloadProcess = spawn(ytDlpPath, args, {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    // Handle process output
+    downloadProcess.stdout?.on('data', (data) => {
+      console.log('yt-dlp stdout:', data.toString());
+    });
+
+    downloadProcess.stderr?.on('data', (data) => {
+      console.log('yt-dlp stderr:', data.toString());
+    });
+
+    // Return immediately (download runs in background)
+    return {
+      success: true,
+      message: `Download iniciado! Salvando em: ${outputPath}`,
+      pid: downloadProcess.pid
+    };
+
   } catch (error) {
     console.error('Download error:', error);
-    return { success: false, message: 'Erro ao iniciar download' };
+    return {
+      success: false,
+      message: `Erro ao iniciar download: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
+    };
   }
 });
 
