@@ -1,7 +1,22 @@
 import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
+import { useState } from 'react';
 import './App.css';
 
 function Hello() {
+  const [downloadPath, setDownloadPath] = useState('');
+
+  const handleBrowseFolder = async () => {
+    try {
+      const result = await window.electron.ipcRenderer.invoke(
+        'dialog:openDirectory',
+      );
+      if (result && !result.canceled && result.filePaths.length > 0) {
+        setDownloadPath(result.filePaths[0]);
+      }
+    } catch (error) {
+      console.error('Error opening folder dialog:', error);
+    }
+  };
   return (
     <div className="container">
       <h1>YouTube Downloader</h1>
@@ -27,11 +42,16 @@ function Hello() {
               id="download-path"
               name="download-path"
               placeholder="Selecione a pasta de destino..."
+              value={downloadPath}
               readOnly
               required
             />
           </label>
-          <button type="button" className="browse-btn">
+          <button
+            type="button"
+            className="browse-btn"
+            onClick={handleBrowseFolder}
+          >
             Procurar
           </button>
         </div>
