@@ -39,6 +39,19 @@ ipcMain.handle('dialog:openDirectory', async () => {
   return result;
 });
 
+ipcMain.handle('download:start', async (_, { url, outputPath, format }) => {
+  try {
+    console.log('Starting download:', { url, outputPath, format });
+    // Aqui você implementaria a lógica de download usando yt-dlp ou similar
+    // Por exemplo: spawn('yt-dlp', [url, '-o', `${outputPath}/%(title)s.%(ext)s`, '--format', format === 'mp3' ? 'bestaudio' : 'best'])
+
+    return { success: true, message: 'Download iniciado com sucesso!' };
+  } catch (error) {
+    console.error('Download error:', error);
+    return { success: false, message: 'Erro ao iniciar download' };
+  }
+});
+
 if (process.env.NODE_ENV === 'production') {
   const sourceMapSupport = require('source-map-support');
   sourceMapSupport.install();
